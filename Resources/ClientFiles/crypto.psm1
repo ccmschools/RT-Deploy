@@ -5,7 +5,8 @@
 # Powershell SecureStrings can only be decrypted on the same machine and account they were encrypted on.
 
 # Request credentials from the user, convert them to JSON format, and store them in a .json file
-# Will only do this if the credentials are valid, and will keep asking until they're valid or the user cancels
+# Will only do this if the credentials are valid, and will keep asking until they're valid or the user cancels.
+# Returns the credentials
 function RequestCredentials ()
 {
 	# Flag to indicate if the credentials are valid or not
@@ -15,7 +16,7 @@ function RequestCredentials ()
 	while ($not_valid)
 	{
 		# Gets the credentials from the user
-		$credential = Get-Credential -Message "Please input your Groves domain username and password"
+		$credential = Get-Credential -Message "Please input your Groves domain username and password. Note: Passwords expire every three months."
 
 		if ($credential -eq $null) { break }
 		
@@ -33,23 +34,41 @@ function RequestCredentials ()
 			
 			# The credentials are now valid
 			$not_valid = $false
+			
 		}
 	}
-
+	
+	return $credential
+	
 }
 
 # Draw in username and password data from a JSON file and return a PS-Credential object
+# If the file doesn't exist or the credentials are invalid, request them
 function GetCredentials ()
 {
 
-	# Draw JSON content in from a settings file
-	$settings = Get-Content -Raw "user_config.json" | ConvertFrom-JSON
+	# If the config file exists
+	if (Test-Path ".\user_config.json")
+	{
+		# Draw JSON content in from a settings file
+		$settings = Get-Content -Raw ".\user_config.json" | ConvertFrom-JSON
+			
+		# Construct the PS-Credential object from the above data
+		$credential = New-Object -typename System.Management.Automation.PSCredential -argumentlist (DecryptSecureString($settings.username)), ($settings.password | ConvertTo-SecureString)
 	
-	# Construct the PS-Credential object from the above data
-	$credential = New-Object -typename System.Management.Automation.PSCredential -argumentlist (DecryptSecureString($settings.username)), ($settings.password | ConvertTo-SecureString)
-	
-	# Return the PS-Credential object
-	return $credential
+		# Request credentials if they're invalid (perhaps the password has expired, or the account is disabled)
+		if (!(TestCredentials($credential)))
+		{
+			RequestCredentials
+		}
+		
+		# Return the PS-Credential object
+		return $credential
+	}
+	else	# Request credentials if the config file doesn't exist
+	{
+		RequestCredentials
+	}
 }
 
 # Decrypt a powershell securestring
