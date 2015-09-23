@@ -30,7 +30,7 @@ function RequestCredentials ()
 			}
 
 			# Output the object as JSON to a settings file
-			$user_config | ConvertTo-JSON | Out-File "user_config.json"
+			$user_config | ConvertTo-JSON | Out-File "user_config.json" -Force
 			
 			# The credentials are now valid
 			$not_valid = $false
@@ -52,9 +52,11 @@ function GetCredentials ()
 	{
 		# Draw JSON content in from a settings file
 		$settings = Get-Content -Raw ".\user_config.json" | ConvertFrom-JSON
-			
+
+		$temp_credential = New-Object -typename System.Management.Automation.PSCredential -argumentlist "placeholder", ($settings.username | ConvertTo-SecureString)
+		
 		# Construct the PS-Credential object from the above data
-		$credential = New-Object -typename System.Management.Automation.PSCredential -argumentlist (DecryptSecureString($settings.username)), ($settings.password | ConvertTo-SecureString)
+		$credential = New-Object -typename System.Management.Automation.PSCredential -argumentlist $temp_credential.GetNetworkCredential().password, ($settings.password | ConvertTo-SecureString)
 	
 		# Request credentials if they're invalid (perhaps the password has expired, or the account is disabled)
 		if (!(TestCredentials($credential)))
@@ -74,6 +76,7 @@ function GetCredentials ()
 # Decrypt a powershell securestring
 # $secure_string = Powershell secure string in plain text
 # Code adapted from: http://blogs.msdn.com/b/besidethepoint/archive/2010/09/21/decrypt-secure-strings-in-powershell.aspx
+# Note: This function is not being used as the assembly isn't available on RT :(
 function DecryptSecureString ($secure_string)
 {
 	$secure_string = $secure_string | ConvertTo-SecureString
@@ -86,21 +89,40 @@ function DecryptSecureString ($secure_string)
 
 # Test the credentials of the user against the domain
 # Code adapted from: http://serverfault.com/questions/276098/check-if-user-password-input-is-valid-in-powershell-script
+# Note: Issues using the assemblies. Instead attempting to map a drive with the credentials, then testing the path.
 function TestCredentials ($credential)
 {
-	$username = $credential.username
-	$password = $credential.GetNetworkCredential().password
+	#$username = $credential.username
+	#$password = $credential.GetNetworkCredential().password
 
-	# Get current domain using logged-on user's credentials
-	$current_domain = "LDAP://" + ([ADSI]"").distinguishedName
-	$domain = New-Object System.DirectoryServices.DirectoryEntry($current_domain,$username,$password)
+	# Get the DNS suffix from DHCP and convert it to the distinguishedName. This is the domain we'll authenticate against.
+	#$dhcp_domain = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\" -Name "DhcpDomain").DhcpDomain
+	#$domain_dn = ""
+	#foreach($dc in $dhcp_domain.Split("."))
+	#{
+#		$domain_dn += "DC=$($dc),"
+	#}
+	#$domain_dn = $domain_dn.substring(0, $domain_dn.length - 1)	# Strip the last comma
+	#$assemType = 'System.DirectoryServices.AccountManagement'
+    #$assem = [reflection.assembly]::LoadWithPartialName($assemType)
+	#$pc = New-Object -TypeName System.DirectoryServices.AccountManagement.PrincipalContext 'Domain', $dhcp_domain
+    
+	#$pc.ValidateCredentials($username, $password)
 	
-	if ($domain.name -eq $null)
-	{
-		return $false
-	}
-	else
-	{
-		return $true
-	}
+	# Get current domain using logged-on user's credentials
+	#$current_domain = "LDAP://$($domain_dn)"
+	#$domain = New-Object System.DirectoryServices.DirectoryEntry($current_domain,$username,$password)
+	
+	New-PSDrive -Name "X" -PSProvider FileSystem -Root "\\rt-deploy\rt-deploy$" -Credential $credential
+	$authenticated = Test-Path "X:\"
+	Remove-PSDrive -Name "X"
+	return $authenticated
+	#if ($domain.name -eq $null)
+	#{
+	#	return $false
+	#}
+	#else
+	#{
+	#	return $true
+	#}
 }
