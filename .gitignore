@@ -1,0 +1,9 @@
+Scripts/Provision/settings.config
+Scripts/Provision/Unused/*
+Resources/Packages/*.appx
+Resources/Packages/*.appxbundle
+Resources/ClientFiles/*.jpg
+Resources/ClientFiles/*.bmp
+Resources/Certificates/*.cer
+Resources/Sysprep/*
+Resources/GPOs/*
